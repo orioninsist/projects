@@ -1,6 +1,6 @@
 # Project Clone Links
 
-Clean list of clone URLs. Lines starting with `#` are skipped by option 4 in the script.
+Clean clone URL list. Local comment changes are kept in `projects-index-link.local.md` and are not committed.
 
 1. <https://github.com/orioninsist/ACE-Step-1.5.git>
 2. <https://github.com/orioninsist/age.git>

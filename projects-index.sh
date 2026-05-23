@@ -6,6 +6,7 @@ cd "$SCRIPT_DIR"
 
 INDEX_FILE="projects-index.md"
 LINK_LIST_FILE="projects-index-link.md"
+LOCAL_LINK_LIST_FILE="projects-index-link.local.md"
 
 touch "$INDEX_FILE" "$LINK_LIST_FILE"
 
@@ -41,6 +42,7 @@ collect_projects_tsv() {
 
 existing_comment_state() {
   local link="$1"
+  [[ -f "$LOCAL_LINK_LIST_FILE" ]] || return 0
   if awk -v link="$link" '
     $0 ~ /^# [0-9]+\. / {
       line = $0
@@ -50,14 +52,33 @@ existing_comment_state() {
       if (line == link) found = 1
     }
     END { exit found ? 0 : 1 }
-  ' "$LINK_LIST_FILE" 2>/dev/null; then
+  ' "$LOCAL_LINK_LIST_FILE" 2>/dev/null; then
     printf "# "
+  fi
+  return 0
+}
+
+write_if_changed() {
+  local source="$1" target="$2"
+  if [[ -f "$target" ]] && cmp -s "$source" "$target"; then
+    rm -f "$source"
+  else
+    mv "$source" "$target"
   fi
 }
 
+ensure_local_link_list() {
+  [[ -f "$LOCAL_LINK_LIST_FILE" ]] && return 0
+  cp "$LINK_LIST_FILE" "$LOCAL_LINK_LIST_FILE"
+  chmod a+rw "$LOCAL_LINK_LIST_FILE"
+}
+
 refresh_files() {
-  local tmp projects_count links_count provider name url current_provider prefix
+  local tmp index_tmp link_tmp local_tmp projects_count links_count provider name url current_provider prefix
   tmp="$(mktemp)"
+  index_tmp="$(mktemp)"
+  link_tmp="$(mktemp)"
+  local_tmp="$(mktemp)"
   collect_projects_tsv > "$tmp"
   projects_count="$(wc -l < "$tmp" | tr -d ' ')"
   links_count="$(awk -F '\t' '$3 != "" { c++ } END { print c + 0 }' "$tmp")"
@@ -67,8 +88,7 @@ refresh_files() {
     printf "Short index of first-level project folders in this directory.\n\n"
     printf -- "- Directory: \`%s\`\n" "$SCRIPT_DIR"
     printf -- "- Total projects: %s\n" "$projects_count"
-    printf -- "- Projects with clone links: %s\n" "$links_count"
-    printf -- "- Last updated: %s\n\n" "$(date '+%Y-%m-%d %H:%M:%S %Z')"
+    printf -- "- Projects with clone links: %s\n\n" "$links_count"
 
     current_provider=""
     local number=0
@@ -90,11 +110,22 @@ refresh_files() {
         printf "| %s | %s | No link found |\n" "$number" "$name"
       fi
     done < "$tmp"
-  } > "$INDEX_FILE"
+  } > "$index_tmp"
 
   {
     printf "# Project Clone Links\n\n"
-    printf "Clean list of clone URLs. Lines starting with \`#\` are skipped by option 4 in the script.\n\n"
+    printf "Clean clone URL list. Local comment changes are kept in \`%s\` and are not committed.\n\n" "$LOCAL_LINK_LIST_FILE"
+    local number=0
+    while IFS=$'\t' read -r _provider _name url; do
+      [[ -n "$url" ]] || continue
+      number=$((number + 1))
+      printf "%s. <%s>\n" "$number" "$url"
+    done < "$tmp"
+  } > "$link_tmp"
+
+  {
+    printf "# Local Project Clone Links\n\n"
+    printf "Ignored local working list. Lines starting with \`#\` are skipped by option 4.\n\n"
     local number=0
     while IFS=$'\t' read -r _provider _name url; do
       [[ -n "$url" ]] || continue
@@ -106,34 +137,41 @@ refresh_files() {
         printf "%s. <%s>\n" "$number" "$url"
       fi
     done < "$tmp"
-  } > "$LINK_LIST_FILE"
+  } > "$local_tmp"
 
+  write_if_changed "$index_tmp" "$INDEX_FILE"
+  write_if_changed "$link_tmp" "$LINK_LIST_FILE"
+  write_if_changed "$local_tmp" "$LOCAL_LINK_LIST_FILE"
+  chmod a+rw "$LOCAL_LINK_LIST_FILE"
   rm -f "$tmp"
   printf "\nRefresh complete.\n"
   printf -- "- %s: %s projects, %s links\n" "$INDEX_FILE" "$projects_count" "$links_count"
-  printf -- "- %s: manual comment states were preserved\n" "$LINK_LIST_FILE"
+  printf -- "- %s: clean tracked clone list\n" "$LINK_LIST_FILE"
+  printf -- "- %s: ignored local clone list, manual comments preserved\n" "$LOCAL_LINK_LIST_FILE"
 }
 
 comment_all_links() {
   local tmp
+  ensure_local_link_list
   tmp="$(mktemp)"
   awk '
     /^[[:space:]]*$/ || /^<!--/ || /^# / { print; next }
     /^[0-9]+\. / { print "# " $0; next }
     { print }
-  ' "$LINK_LIST_FILE" > "$tmp"
-  mv "$tmp" "$LINK_LIST_FILE"
-  chmod a+rw "$LINK_LIST_FILE"
-  printf "\nAll clone links were commented out: %s\n" "$LINK_LIST_FILE"
+  ' "$LOCAL_LINK_LIST_FILE" > "$tmp"
+  write_if_changed "$tmp" "$LOCAL_LINK_LIST_FILE"
+  chmod a+rw "$LOCAL_LINK_LIST_FILE"
+  printf "\nAll local clone links were commented out: %s\n" "$LOCAL_LINK_LIST_FILE"
 }
 
 uncomment_all_links() {
   local tmp
+  ensure_local_link_list
   tmp="$(mktemp)"
-  sed -E 's/^# ([0-9]+\. )/\1/' "$LINK_LIST_FILE" > "$tmp"
-  mv "$tmp" "$LINK_LIST_FILE"
-  chmod a+rw "$LINK_LIST_FILE"
-  printf "\nAll clone links were uncommented: %s\n" "$LINK_LIST_FILE"
+  sed -E 's/^# ([0-9]+\. )/\1/' "$LOCAL_LINK_LIST_FILE" > "$tmp"
+  write_if_changed "$tmp" "$LOCAL_LINK_LIST_FILE"
+  chmod a+rw "$LOCAL_LINK_LIST_FILE"
+  printf "\nAll local clone links were uncommented: %s\n" "$LOCAL_LINK_LIST_FILE"
 }
 
 repo_name_from_url() {
@@ -145,6 +183,7 @@ repo_name_from_url() {
 
 clone_selected_links() {
   local line url repo_name cloned=0 skipped=0 failed=0
+  ensure_local_link_list
   printf "\nClone started. Only uncommented links will be used.\n"
   while IFS= read -r line; do
     [[ "$line" =~ ^[0-9]+\.\  ]] || continue
@@ -165,7 +204,7 @@ clone_selected_links() {
       printf "  Error: could not clone %s\n" "$url"
       failed=$((failed + 1))
     fi
-  done < "$LINK_LIST_FILE"
+  done < "$LOCAL_LINK_LIST_FILE"
   printf "\nClone result: %s cloned, %s skipped, %s failed.\n" "$cloned" "$skipped" "$failed"
 }
 
@@ -206,9 +245,9 @@ Projects Index
 Directory: $SCRIPT_DIR
 
 1) Refresh the directory scan and update the index files
-2) Comment out every clone link
-3) Uncomment every clone link
-4) Clone uncommented links into this directory
+2) Comment out every clone link in the ignored local list
+3) Uncomment every clone link in the ignored local list
+4) Clone uncommented local links into this directory
 5) Add .ignore-backup to all first-level project folders
 0) Exit
 

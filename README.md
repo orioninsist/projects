@@ -1,3 +1,9 @@
+# Projects
+
+Bu repo, `/mnt/local/projects` ana klasorundeki proje klasorlerini takip etmek icin kullanilan yardimci script ve markdown ciktilarini tutar.
+
+Bu repo alt klasorlerdeki projeleri takip etmez. `.gitignore` dosyasi sayesinde sadece takip scripti, markdown ciktilari ve bu `README.md` dosyasi GitHub'a gonderilir.
+
 ## Kurulum ve kullanim notu
 
 Bu dizinde takip edilecek ana dosyalar sunlar olacak:
@@ -5,7 +11,8 @@ Bu dizinde takip edilecek ana dosyalar sunlar olacak:
 1. `projects-main-folder-structure.sh`
 2. `projects-main-folder-structure-index.md`
 3. `projects-main-folder-structure-link-list.md`
-4. `projects-main-folder-structure-readme.md`
+4. `README.md`
+5. `.gitignore`
 
 Script her zaman kendi bulundugu dizinde calisir. Baska bir yere tasindiginda, o yeni dizindeki proje klasorlerini tarar.
 
@@ -65,16 +72,18 @@ Calisma sonunda sana sonuc yazar:
 
 Yani tek tek kontrol etmek zorunda kalmazsin. Kac klasor kontrol edildi, kacina yeni dosya eklendi, kacinda zaten vardi, sorun var mi hepsini cikti olarak gorursun.
 
-Git kurulumu burada otomatik yapilmadi. Bu klasoru git ile takip etmek istediginde su sekilde kur:
+## Git kurulumu
+
+Git kurulumu otomatik yapilmaz. Bu klasoru git ile takip etmek istediginde su sekilde kur:
 
 ```bash
 git init
-printf "*\n!projects-main-folder-structure.sh\n!projects-main-folder-structure-index.md\n!projects-main-folder-structure-link-list.md\n!projects-main-folder-structure-readme.md\n!.gitignore\n" > .gitignore
-git add .gitignore projects-main-folder-structure.sh projects-main-folder-structure-index.md projects-main-folder-structure-link-list.md projects-main-folder-structure-readme.md
+printf "*\n!projects-main-folder-structure.sh\n!projects-main-folder-structure-index.md\n!projects-main-folder-structure-link-list.md\n!README.md\n!.gitignore\n" > .gitignore
+git add .gitignore README.md projects-main-folder-structure.sh projects-main-folder-structure-index.md projects-main-folder-structure-link-list.md
 git commit -m "Add projects main folder structure tracker"
 ```
 
-Boylece bu dizindeki diger proje klasorleri ve dosyalar git tarafindan takip edilmez; sadece script, iki otomatik markdown dosyasi, bu readme dosyasi ve `.gitignore` takip edilir.
+Boylece bu dizindeki diger proje klasorleri ve dosyalar git tarafindan takip edilmez; sadece script, iki otomatik markdown dosyasi, `README.md` ve `.gitignore` takip edilir.
 
 ## Neden .gitignore kullaniyoruz?
 
@@ -100,7 +109,7 @@ Sonra takip edilmesini istedigimiz dosyalari `!` isaretiyle tekrar aciyoruz:
 !projects-main-folder-structure.sh
 !projects-main-folder-structure-index.md
 !projects-main-folder-structure-link-list.md
-!projects-main-folder-structure-readme.md
+!README.md
 !.gitignore
 ```
 
@@ -117,7 +126,7 @@ Yani tam `.gitignore` dosyasi boyle olmali:
 !projects-main-folder-structure.sh
 !projects-main-folder-structure-index.md
 !projects-main-folder-structure-link-list.md
-!projects-main-folder-structure-readme.md
+!README.md
 !.gitignore
 ```
 

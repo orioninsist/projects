@@ -1,6 +1,7 @@
-*
-!projects-main-folder-structure.sh
-!projects-main-folder-structure-index.md
-!projects-main-folder-structure-link-list.md
-!README.md
-!.gitignore
+/*
+
+!/.gitignore
+!/README.md
+!/projects-index.sh
+!/projects-index.md
+!/projects-index-link.md

@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-INDEX_FILE="projects-main-folder-structure-index.md"
-LINK_LIST_FILE="projects-main-folder-structure-link-list.md"
+INDEX_FILE="projects-index.md"
+LINK_LIST_FILE="projects-index-link.md"
 
 touch "$INDEX_FILE" "$LINK_LIST_FILE"
 
@@ -13,10 +13,10 @@ provider_name() {
   local url="$1"
   case "$url" in
     *github.com*) printf "GitHub" ;;
-    *gitlab.com*) printf "GitLab" ;;
+    *gitlab*) printf "GitLab" ;;
     *bitbucket.org*) printf "Bitbucket" ;;
-    "") printf "Link Yok" ;;
-    *) printf "Diger" ;;
+    "") printf "No Link" ;;
+    *) printf "Other" ;;
   esac
 }
 
@@ -41,7 +41,16 @@ collect_projects_tsv() {
 
 existing_comment_state() {
   local link="$1"
-  if grep -Fqx "# $link" "$LINK_LIST_FILE" 2>/dev/null || grep -Fqx "#$link" "$LINK_LIST_FILE" 2>/dev/null; then
+  if awk -v link="$link" '
+    $0 ~ /^# [0-9]+\. / {
+      line = $0
+      sub(/^# [0-9]+\. /, "", line)
+      sub(/^</, "", line)
+      sub(/>$/, "", line)
+      if (line == link) found = 1
+    }
+    END { exit found ? 0 : 1 }
+  ' "$LINK_LIST_FILE" 2>/dev/null; then
     printf "# "
   fi
 }
@@ -54,46 +63,55 @@ refresh_files() {
   links_count="$(awk -F '\t' '$3 != "" { c++ } END { print c + 0 }' "$tmp")"
 
   {
-    printf "# Projects Main Folder Structure Index\n\n"
-    printf -- "- Dizin: \`%s\`\n" "$SCRIPT_DIR"
-    printf -- "- Toplam proje klasoru: %s\n" "$projects_count"
-    printf -- "- Git clone linki bulunan proje: %s\n" "$links_count"
-    printf -- "- Son guncelleme: %s\n\n" "$(date '+%Y-%m-%d %H:%M:%S %Z')"
+    printf "# Projects Index\n\n"
+    printf "Short index of first-level project folders in this directory.\n\n"
+    printf -- "- Directory: \`%s\`\n" "$SCRIPT_DIR"
+    printf -- "- Total projects: %s\n" "$projects_count"
+    printf -- "- Projects with clone links: %s\n" "$links_count"
+    printf -- "- Last updated: %s\n\n" "$(date '+%Y-%m-%d %H:%M:%S %Z')"
 
     current_provider=""
     local number=0
     while IFS=$'\t' read -r provider name url; do
       [[ -n "$name" ]] || continue
       if [[ "$provider" != "$current_provider" ]]; then
+        if [[ -n "$current_provider" ]]; then
+          printf "\n"
+        fi
         current_provider="$provider"
         printf "## %s\n\n" "$current_provider"
+        printf "| # | Project | Clone link |\n"
+        printf "|---:|---|---|\n"
       fi
       number=$((number + 1))
-      printf "### %s. %s\n\n" "$number" "$name"
       if [[ -n "$url" ]]; then
-        printf -- "- Clone link: \`%s\`\n\n" "$url"
+        printf "| %s | %s | [%s](%s) |\n" "$number" "$name" "$url" "$url"
       else
-        printf -- "- Clone link: bulunamadi\n\n"
+        printf "| %s | %s | No link found |\n" "$number" "$name"
       fi
     done < "$tmp"
   } > "$INDEX_FILE"
 
   {
-    printf "# Projects Main Folder Structure Link List\n\n"
-    printf "<!-- Basinda # olan linkler 4. asamada indirilmez. -->\n\n"
+    printf "# Project Clone Links\n\n"
+    printf "Clean list of clone URLs. Lines starting with \`#\` are skipped by option 4 in the script.\n\n"
     local number=0
     while IFS=$'\t' read -r _provider _name url; do
       [[ -n "$url" ]] || continue
       number=$((number + 1))
       prefix="$(existing_comment_state "$url")"
-      printf "%s%s- %s\n" "$prefix" "$number" "$url"
+      if [[ -n "$prefix" ]]; then
+        printf "# %s. <%s>\n" "$number" "$url"
+      else
+        printf "%s. <%s>\n" "$number" "$url"
+      fi
     done < "$tmp"
   } > "$LINK_LIST_FILE"
 
   rm -f "$tmp"
-  printf "\nGuncelleme tamamlandi.\n"
-  printf -- "- %s: %s proje, %s link\n" "$INDEX_FILE" "$projects_count" "$links_count"
-  printf -- "- %s: manuel yorum durumlari korunarak yenilendi\n" "$LINK_LIST_FILE"
+  printf "\nRefresh complete.\n"
+  printf -- "- %s: %s projects, %s links\n" "$INDEX_FILE" "$projects_count" "$links_count"
+  printf -- "- %s: manual comment states were preserved\n" "$LINK_LIST_FILE"
 }
 
 comment_all_links() {
@@ -101,21 +119,21 @@ comment_all_links() {
   tmp="$(mktemp)"
   awk '
     /^[[:space:]]*$/ || /^<!--/ || /^# / { print; next }
-    /^[0-9]+- / { print "# " $0; next }
+    /^[0-9]+\. / { print "# " $0; next }
     { print }
   ' "$LINK_LIST_FILE" > "$tmp"
   mv "$tmp" "$LINK_LIST_FILE"
   chmod a+rw "$LINK_LIST_FILE"
-  printf "\nTum linkler yorum satiri yapildi: %s\n" "$LINK_LIST_FILE"
+  printf "\nAll clone links were commented out: %s\n" "$LINK_LIST_FILE"
 }
 
 uncomment_all_links() {
   local tmp
   tmp="$(mktemp)"
-  sed -E 's/^# ([0-9]+- )/\1/' "$LINK_LIST_FILE" > "$tmp"
+  sed -E 's/^# ([0-9]+\. )/\1/' "$LINK_LIST_FILE" > "$tmp"
   mv "$tmp" "$LINK_LIST_FILE"
   chmod a+rw "$LINK_LIST_FILE"
-  printf "\nTum link yorumlari kaldirildi: %s\n" "$LINK_LIST_FILE"
+  printf "\nAll clone links were uncommented: %s\n" "$LINK_LIST_FILE"
 }
 
 repo_name_from_url() {
@@ -127,32 +145,34 @@ repo_name_from_url() {
 
 clone_selected_links() {
   local line url repo_name cloned=0 skipped=0 failed=0
-  printf "\nIndirme basliyor. Yorum satiri olmayan linkler kullanilacak.\n"
+  printf "\nClone started. Only uncommented links will be used.\n"
   while IFS= read -r line; do
-    [[ "$line" =~ ^[0-9]+-\  ]] || continue
-    url="${line#*- }"
+    [[ "$line" =~ ^[0-9]+\.\  ]] || continue
+    url="${line#*. }"
+    url="${url#<}"
+    url="${url%>}"
     [[ -n "$url" ]] || continue
     repo_name="$(repo_name_from_url "$url")"
     if [[ -e "$repo_name" ]]; then
-      printf -- "- Atlandi, zaten var: %s\n" "$repo_name"
+      printf -- "- Skipped, already exists: %s\n" "$repo_name"
       skipped=$((skipped + 1))
       continue
     fi
-    printf -- "- Klonlaniyor: %s\n" "$url"
+    printf -- "- Cloning: %s\n" "$url"
     if git clone "$url"; then
       cloned=$((cloned + 1))
     else
-      printf "  Hata: %s indirilemedi\n" "$url"
+      printf "  Error: could not clone %s\n" "$url"
       failed=$((failed + 1))
     fi
   done < "$LINK_LIST_FILE"
-  printf "\nIndirme sonucu: %s klonlandi, %s atlandi, %s hata.\n" "$cloned" "$skipped" "$failed"
+  printf "\nClone result: %s cloned, %s skipped, %s failed.\n" "$cloned" "$skipped" "$failed"
 }
 
 add_ignore_backup_files() {
   local dir name target total=0 created=0 existing=0 failed=0
-  printf "\n.ignore-backup kontrolu basliyor.\n"
-  printf "Islem dizini: %s\n\n" "$SCRIPT_DIR"
+  printf "\n.ignore-backup check started.\n"
+  printf "Directory: %s\n\n" "$SCRIPT_DIR"
 
   for dir in */; do
     [[ -d "$dir" ]] || continue
@@ -162,35 +182,35 @@ add_ignore_backup_files() {
     target="$name/.ignore-backup"
 
     if [[ -e "$target" ]]; then
-      printf -- "- Var, dokunulmadi: %s\n" "$target"
+      printf -- "- Exists, unchanged: %s\n" "$target"
       existing=$((existing + 1))
       continue
     fi
 
     if : > "$target"; then
-      printf -- "- Eklendi: %s\n" "$target"
+      printf -- "- Added: %s\n" "$target"
       created=$((created + 1))
     else
-      printf -- "- Hata, eklenemedi: %s\n" "$target"
+      printf -- "- Error, could not add: %s\n" "$target"
       failed=$((failed + 1))
     fi
   done
 
-  printf "\n.ignore-backup sonucu: %s klasor kontrol edildi, %s yeni eklendi, %s zaten vardi, %s hata.\n" "$total" "$created" "$existing" "$failed"
+  printf "\n.ignore-backup result: %s folders checked, %s added, %s already existed, %s failed.\n" "$total" "$created" "$existing" "$failed"
 }
 
 print_menu() {
   cat <<MENU
 
-Projects Main Folder Structure
-Dizin: $SCRIPT_DIR
+Projects Index
+Directory: $SCRIPT_DIR
 
-1) Dizin taramasini yenile, index ve link listesini olustur
-2) Link listesindeki tum linkleri yorum satiri yap
-3) Link listesindeki tum yorumlari kaldir
-4) Yorum satiri olmayan linkleri bu dizine git clone ile indir
-5) Tum ana klasorlere .ignore-backup dosyasi ekle
-0) Cikis
+1) Refresh the directory scan and update the index files
+2) Comment out every clone link
+3) Uncomment every clone link
+4) Clone uncommented links into this directory
+5) Add .ignore-backup to all first-level project folders
+0) Exit
 
 MENU
 }
@@ -205,8 +225,8 @@ main() {
       3) uncomment_all_links ;;
       4) clone_selected_links ;;
       5) add_ignore_backup_files ;;
-      0) printf "\nCikis yapildi.\n"; exit 0 ;;
-      *) printf "\nGecersiz secim: %s\n" "$choice" ;;
+      0) printf "\nExited.\n"; exit 0 ;;
+      *) printf "\nInvalid choice: %s\n" "$choice" ;;
     esac
   done
 }
